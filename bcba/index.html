@@ -60,7 +60,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .store-chip i{width:8px;height:8px;border-radius:50%;background:var(--muted);margin-top:7px;flex:none}
 .store-chip.shared i{background:var(--good)}
 
-main{min-width:0;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{min-width:0;overflow-x:clip;padding-block:28px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .wrap{max-width:1080px;margin-inline:auto;display:flex;flex-direction:column;gap:22px}
 .view[hidden]{display:none!important}
 .head{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
@@ -174,6 +174,19 @@ td .ctx{min-width:170px}
   .g3{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:620px){ .g2{grid-template-columns:minmax(0,1fr)} .def{grid-template-columns:minmax(0,1fr)} .def dt{padding-top:6px} }
+@media (max-width:620px){
+  table.cards thead{display:none}
+  table.cards,table.cards tbody,table.cards td{display:block;width:100%}
+  table.cards tr{display:grid;grid-template-columns:60px minmax(0,1fr);column-gap:12px;row-gap:6px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  table.cards tr:last-child{border-bottom:0}
+  table.cards td{border:0;padding:0;grid-column:2;min-width:0}
+  table.cards td:first-child{grid-column:1;grid-row:1 / span 8}
+  table.cards td[data-l]::before{content:attr(data-l);display:block;font-size:.72rem;color:var(--muted);margin-bottom:2px}
+  table.cards td .ctx{min-width:0;width:100%}
+  table.cards td .row{flex-wrap:wrap!important}
+  table.cards td .btn.sm{padding:7px 16px;font-size:.9rem}
+}
+.cd{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--display);font-size:5rem;font-weight:700;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6);pointer-events:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -181,7 +194,7 @@ td .ctx{min-width:170px}
 <body>
 <div class="app" dir="rtl" lang="ar">
   <aside class="rail">
-    <div class="brand"><b>مساعد BCBA الذكي</b><span>نموذج أولي · أولمبياد إبداع</span></div>
+    <div class="brand"><b>مساعد BCBA الذكي</b><span>تجربة: دقة نظام الرؤية الحاسوبية في رصد السلوكيات الحركية</span></div>
     <nav class="nav" id="nav"></nav>
     <div class="store-chip" id="storeChip"><i></i><span>جارٍ الاتصال بالمخزن…</span></div>
   </aside>
@@ -213,6 +226,26 @@ const BEH = {
     tech:'زاوية الركبة (ورك–ركبة–كاحل) وارتفاع الورك عن الركبة منسوبًا إلى طول الجذع. جلوس: زاوية ≤ 120° أو الورك بمستوى الركبة تقريبًا (عند التصوير من الأمام). وقوف: زاوية ≥ 160° والورك أعلى من الركبة بنصف طول الجذع، لمدة 0.3 ثانية.'}
 };
 const BKEYS = ['raise','clap','stand'];
+const EXP = 'دقة نظام الرؤية الحاسوبية في رصد السلوكيات الحركية';
+const CONSENT = `نموذج موافقة ولي الأمر على مشاركة طفل في تجربة بحثية
+
+عنوان التجربة: ${'دقة نظام الرؤية الحاسوبية في رصد السلوكيات الحركية'}
+المشروع: الأولمبياد الوطني للإبداع العلمي «إبداع»
+الطالبة الباحثة: ......................
+الأخصائية المشرفة (BCBA): ......................
+
+أنا ولي أمر الطفل/ـة: ...................... (يُستخدم رمز بدل الاسم في البيانات)
+أوافق على مشاركته/ا في التجربة، وقد فهمت ما يلي:
+1. تُستخدم كاميرا تحلّل حركة الجسم داخل الجهاز مباشرة، ولا يُسجَّل فيديو ولا تُحفظ صورة الطفل أو وجهه.
+2. يُحفظ فقط عدد مرات ثلاث حركات (رفع اليد، التصفيق، القيام من الكرسي) وأوقاتها، تحت رمز لا يدل على هوية الطفل.
+3. تُستخدم النتائج لأغراض البحث فقط، ولا يُنشر ما يدل على هوية الطفل.
+4. يتوقف الرصد فورًا إذا انزعج الطفل، ويحق لي إيقاف المشاركة وحذف البيانات في أي وقت دون أي أثر.
+5. تحضر التجربة/يُبلَّغ بها ولي الأمر، وتشرف عليها أخصائية معتمدة.
+
+اسم ولي الأمر: ......................
+صلة القرابة: ......................
+التوقيع: ......................
+التاريخ: ......................`;
 const VIEWS = [
   ['home','اللوحة'],['child','ملف الطفل'],['behaviors','السلوكيات المستهدفة'],
   ['session','جلسة رصد'],['review','مراجعة الأحداث'],['ioa','الاتفاق والدقة'],
@@ -430,10 +463,15 @@ function vChild(){
     <label class="check"><input type="checkbox" id="c_g" ${c.consentGuardian?'checked':''}> موافقة ولي الأمر المستنيرة المكتوبة على الرصد واستخدام البيانات في البحث.</label>
     <label class="check"><input type="checkbox" id="c_a" ${c.consentAssent?'checked':''}> قبول الطفل (Assent) بما يناسب قدرته، مع إيقاف الرصد عند انزعاجه.</label>
     <label class="check"><input type="checkbox" id="c_s" ${c.consentSpecialist?'checked':''}> موافقة الأخصائية المشرفة على الأهداف والسلوكيات والمصادر.</label>
+    <details class="stack"><summary class="small" style="cursor:pointer;font-weight:600">نموذج موافقة ولي الأمر (نص جاهز للنسخ)</summary>
+      <textarea id="consentText" class="out" readonly style="min-height:300px">${esc(CONSENT)}</textarea>
+      <div class="row"><button class="btn sm" type="button" id="copyConsent">نسخ النموذج</button></div>
+    </details>
     <div class="row"><button class="btn primary" type="submit">حفظ الملف</button><span class="small muted" id="childMsg"></span></div>
   </form>`;
 }
 afterRender.child = ()=>{
+  $('#copyConsent').addEventListener('click', ()=>copyText(CONSENT, $('#consentText')));
   $('#childForm').addEventListener('submit', async e=>{
     e.preventDefault();
     const d={ code:$('#c_code').value.trim(), age:$('#c_age').value, setting:$('#c_setting').value.trim(), goals:$('#c_goals').value.trim(), report:$('#c_report').value.trim(), consentGuardian:$('#c_g').checked, consentAssent:$('#c_a').checked, consentSpecialist:$('#c_s').checked };
@@ -583,12 +621,14 @@ function vSession(){
         <label class="f">التاريخ<input type="date" id="s_date" value="${today()}"></label>
         <label class="f">الكاميرا<select id="s_face"><option value="environment">الخلفية (لتصوير الطفل)</option><option value="user">الأمامية</option></select></label>
         <label class="f">معدل التحليل<select id="s_fps"><option value="10">10 إطارات/ث (أسرع)</option><option value="15" selected>15 إطارًا/ث (موصى به)</option><option value="25">25 إطارًا/ث (أدق للتصفيق)</option></select></label>
+        <label class="f">مدة الرصد بالكاميرا<select id="s_limit"><option value="60">دقيقة</option><option value="120" selected>دقيقتان</option><option value="180">3 دقائق</option><option value="300">5 دقائق</option><option value="600">10 دقائق</option><option value="0">بدون حد (إيقاف يدوي)</option></select></label>
         <div class="row">
           <label class="btn primary" for="s_file" style="cursor:pointer">اختيار فيديو</label>
           <input type="file" id="s_file" accept="video/*" hidden>
           <button class="btn" id="s_cam">الكاميرا المباشرة</button>
           <button class="btn danger" id="s_stop" hidden>إيقاف</button>
         </div>
+        <p class="small muted">عندك فيديو مسجّل؟ ارفعيه بـ«اختيار فيديو» بدل تشغيله أمام الكاميرا: يُحلَّل إطارًا إطارًا ويتوقف وحده عند نهايته. أما الكاميرا فتتوقف وحدها عند انتهاء المدة المختارة.</p>
       </div>
       <div class="grid g3" style="gap:8px" id="liveCounters"></div>
       <div class="sheet stack" id="saveBox" hidden>
@@ -680,22 +720,28 @@ async function startCamera(){
   const v=$('#vid'); v.src=''; v.srcObject=camStream; await v.play(); $('#stageEmpty').hidden=true; $('#saveBox').hidden=true;
   try{ await ensurePose(); }catch(e){ stopCamera(); return; }
   const W=v.videoWidth, H=v.videoHeight; const det=new Detector(W,H);
-  run={active:true, stop:false, det, source:'camera', fps:null}; $('#s_stop').hidden=false; $('#s_cam').disabled=true;
-  const t0=performance.now(); let n=0;
+  const limit=+$('#s_limit').value||0;
+  run={active:true, stop:false, det, source:'camera', fps:null, limit}; $('#s_stop').hidden=false; $('#s_cam').disabled=true;
+  const stage=$('#stage'); const cd=document.createElement('div'); cd.className='cd'; stage.appendChild(cd);
+  for(let k=5;k>0 && !run.stop;k--){ cd.textContent=k; setStatus('يبدأ الرصد بعد '+k+' ث… خذي مكانك أمام الكاميرا والجسم كامل في الصورة'); await new Promise(r=>setTimeout(r,1000)); }
+  cd.remove();
+  const t0=performance.now(); let n=0, reachedLimit=false;
   while(!run.stop){
     await pose.send({image:v}); const t=(performance.now()-t0)/1000; const lm=lastResults&&lastResults.poseLandmarks;
+    if(limit && t>=limit){ reachedLimit=true; break; }
     det.update(t,lm); drawOverlay(lm,W,H); n++;
-    if(n%5===0 || n===1){ renderCounters(det.counts()); setStatus(`رصد مباشر · ${fmtT(t)} · لا يُسجَّل أي فيديو · اضغطي «إيقاف» ثم «حفظ» عند الانتهاء`); drawTimeline(det.events, Math.max(60,t)); }
+    if(n%5===0 || n===1){ renderCounters(det.counts()); setStatus(`رصد مباشر · ${fmtT(t)}${limit? ` · يتبقى ${fmtT(Math.max(0,limit-t))}` : ''} · لا يُسجَّل أي فيديو`); drawTimeline(det.events, Math.max(limit||60,t)); }
     await new Promise(r=>requestAnimationFrame(r));
   }
-  const t=(performance.now()-t0)/1000; det.finish(t); run.duration=t; run.fps=Math.round(n/t); run.active=false;
+  run.reachedLimit=reachedLimit;
+  const t=Math.min((performance.now()-t0)/1000, limit||Infinity); det.finish(t); run.duration=t; run.fps=Math.round(n/t); run.active=false;
   stopCamera(); $('#s_stop').hidden=true; $('#s_cam').disabled=false; finishRun();
 }
 function stopCamera(){ try{ wakeLock?.release(); }catch(e){} wakeLock=null; if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; } if(run && run.active && run.source==='camera') run.stop=true; }
 function finishRun(){
   const det=run.det, cn=det.counts(); renderCounters(cn); drawTimeline(det.events, run.duration);
   const und=det.events.filter(e=>e.kind==='undet');
-  setStatus(`انتهى التحليل: ${fmtDur(run.duration)}${und.length? ` · فترات غير قابلة للتحديد: ${und.length}` : ''}.`);
+  setStatus(`${run.reachedLimit? 'انتهت المدة المحددة. ' : ''}انتهى التحليل: ${fmtDur(run.duration)}${und.length? ` · فترات غير قابلة للتحديد: ${und.length}` : ''}.`);
   $('#saveSummary').textContent = `رُصد: ${BKEYS.map(b=>`${BEH[b].name} ${cn[b]}`).join('، ')}. كل الأحداث تُحفظ «مقترحة» حتى يعتمدها الأخصائي.`;
   $('#saveBox').hidden=false;
 }
@@ -739,16 +785,16 @@ function vReview(){
     ${list.some(e=>e.status==='pending')?`<button class="btn" id="approveAll" style="align-self:flex-end">اعتماد كل المعروض المقترح</button>`:''}
   </div>
   <div class="sheet flush"><div class="tbl-wrap">
-  ${list.length? `<table><thead><tr><th>الوضعية</th><th>السلوك</th><th>الوقت</th><th>التفاصيل</th><th>العدد</th><th>ما حدث قبله (السياق)</th><th>الحالة</th><th>القرار</th></tr></thead><tbody>
+  ${list.length? `<table class="cards"><thead><tr><th>الوضعية</th><th>السلوك</th><th>الوقت</th><th>التفاصيل</th><th>العدد</th><th>ما حدث قبله (السياق)</th><th>الحالة</th><th>القرار</th></tr></thead><tbody>
   ${list.map(e=>`<tr data-id="${e.id}">
     <td>${e.kind==='event'?stick(e.key):''}</td>
-    <td><span class="chip ${BEH[e.behavior].cls}">${BEH[e.behavior].name}</span></td>
-    <td class="num">${fmtT(e.start)} – ${fmtT(e.end)}</td>
-    <td class="small">${e.kind==='undet'?'الحركة محجوبة أو خارج الإطار':esc(e.detail)}</td>
-    <td>${e.kind==='event'? (e.behavior==='clap'? `<input type="number" min="0" class="num" style="width:64px" data-count value="${e.count||1}" aria-label="عدد التصفيقات">` : `<span class="num">1</span>`) : '—'}</td>
-    <td>${e.kind==='event'?`<input type="text" class="ctx" data-ctx value="${esc(e.context)}" placeholder="بعد…" aria-label="السياق">`:''}</td>
-    <td>${statusPill(e.status)}</td>
-    <td>${e.kind==='event'?`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-act="approved">اعتماد</button><button class="btn sm ghost danger" data-act="rejected">رفض</button></div>`:''}</td>
+    <td data-l="السلوك"><span class="chip ${BEH[e.behavior].cls}">${BEH[e.behavior].name}</span></td>
+    <td data-l="الوقت"><span class="num">${fmtT(e.start)} – ${fmtT(e.end)}</span></td>
+    <td data-l="التفاصيل" class="small">${e.kind==='undet'?'الحركة محجوبة أو خارج الإطار':esc(e.detail)}</td>
+    <td data-l="العدد">${e.kind==='event'? (e.behavior==='clap'? `<input type="number" min="0" class="num" style="width:64px" data-count value="${e.count||1}" aria-label="عدد التصفيقات">` : `<span class="num">1</span>`) : '—'}</td>
+    <td data-l="ما حدث قبله (السياق)">${e.kind==='event'?`<input type="text" class="ctx" data-ctx value="${esc(e.context)}" placeholder="بعد…" aria-label="السياق">`:''}</td>
+    <td data-l="الحالة">${statusPill(e.status)}</td>
+    <td data-l="القرار">${e.kind==='event'?`<div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm" data-act="approved">اعتماد</button><button class="btn sm ghost danger" data-act="rejected">رفض</button></div>`:''}</td>
   </tr>`).join('')}</tbody></table>` : `<p class="muted" style="padding:20px">لا توجد أحداث بهذه التصفية.</p>`}
   </div></div>`;
 }
@@ -764,7 +810,7 @@ afterRender.review = ()=>{
     const b=ev.target.closest('[data-act]'); if(!b) return; const tr=b.closest('tr'); const id=tr.dataset.id;
     const patch={status:b.dataset.act}; const ctx=tr.querySelector('[data-ctx]'); if(ctx) patch.context=ctx.value.trim();
     const cnt=tr.querySelector('[data-count]'); if(cnt) patch.count=Math.max(0,+cnt.value||0);
-    await saveEvent(id,patch); tr.querySelector('td:nth-child(8)').innerHTML=statusPill(patch.status); renderNav();
+    await saveEvent(id,patch); tr.querySelector('td[data-l="الحالة"]').innerHTML=statusPill(patch.status); renderNav();
   });
   $('#vroot').addEventListener('change', async ev=>{
     const tr=ev.target.closest('tr[data-id]'); if(!tr) return;
@@ -829,10 +875,57 @@ function vIoa(){
     ${r.f1!=null? `<table><tbody><tr><td class="small">صحيح / زائد / فائت</td><td class="num">${r.tp} / ${r.fp} / ${r.fn}</td></tr><tr><td class="small">الدقة (Precision)</td><td class="num">${pct(r.precision)}</td></tr><tr><td class="small">الاستدعاء (Recall)</td><td class="num">${pct(r.recall)}</td></tr><tr><td class="small">F1</td><td class="num">${pct(r.f1)}</td></tr></tbody></table><p class="small muted">التطابق ضمن ±${TOL} ثانية.</p>` : `<p class="small muted">أدخلي الأوقات لحساب الدقة والاستدعاء.</p>`}
   </div></div>`; }).join('')}
   <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit">حفظ عدّ الأخصائية وحساب الاتفاق</button></div>
-  </form>`;
+  </form>
+  ${behaviorReportHTML(s,R)}`;
+}
+function behaviorRows(s,R){
+  return BKEYS.map(b=>{ const r=R[b]; const evs=evOf(s.id,b).filter(e=>e.kind==='event');
+    const extra = b==='raise'? (()=>{ const both=evs.filter(e=>/باليدين/.test(e.detail||'')).length; return `باليدين ${both}، بيد واحدة ${evs.length-both}`; })() : b==='clap'? `${evs.length} نوبة تصفيق` : '';
+    return {b, name:BEH[b].name, sys:r.sysCount, times:(r.sysTimes||[]).map(fmtT), extra, spec:r.specCount, specTimes:(r.specTimes||[]).map(fmtT), total:r.total, f1:r.f1, precision:r.precision, recall:r.recall}; });
+}
+function behaviorReportText(s,R){
+  const rows=behaviorRows(s,R), L=[];
+  L.push('تقرير السلوكيات — '+EXP);
+  L.push(`الجلسة: ${s.label} · ${s.date} · المدة ${fmtDur(s.duration)} · ${s.source==='camera'?'كاميرا مباشرة':'فيديو مسجّل'}`);
+  L.push('(مخرجات النظام قبل مراجعة الأخصائي)');
+  L.push('');
+  for(const r of rows){
+    L.push(`${r.name}: النظام ${r.sys} مرة${r.extra? ' ('+r.extra+')':''}`);
+    L.push(`  أوقات النظام: ${r.times.length? r.times.join('، ') : '—'}`);
+    if(r.spec!=null){ L.push(`  الأخصائية: ${r.spec} مرة${r.specTimes.length? ' · أوقاتها: '+r.specTimes.join('، '):''}`); L.push(`  اتفاق العدّ: ${pct(r.total)}${r.f1!=null? ` · الدقة ${pct(r.precision)} · الاستدعاء ${pct(r.recall)} · F1 ${pct(r.f1)}`:''}`); }
+    else L.push('  الأخصائية: لم يُسجَّل عدّها بعد');
+  }
+  const und=evOf(s.id).filter(e=>e.kind==='undet');
+  L.push(''); L.push(`فترات غير قابلة للتحديد: ${und.length}${und.length? ' ('+und.map(e=>BEH[e.behavior].name+' '+fmtT(e.start)+'–'+fmtT(e.end)).join('، ')+')':''}`);
+  return L.join('\n');
+}
+function behaviorReportHTML(s,R){
+  const rows=behaviorRows(s,R);
+  return `<div class="sheet stack">
+    <div class="row" style="justify-content:space-between"><div class="stack" style="gap:2px"><h2>تقرير كل سلوك</h2><p class="small muted">مخرجات النظام كما رصدها قبل مراجعة الأخصائي، لمقارنتها بتقرير الأخصائية للجلسة نفسها.</p></div>
+    <div class="row"><button class="btn primary" id="br_copy" type="button">نسخ التقرير لإرساله</button><button class="btn" id="br_csv" type="button">تنزيل CSV</button></div></div>
+    <div class="tbl-wrap"><table><thead><tr><th>السلوك</th><th>عدّ النظام</th><th>أوقات النظام</th><th>عدّ الأخصائية</th><th>اتفاق العدّ</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td><span class="chip ${BEH[r.b].cls}">${r.name}</span>${r.extra?`<div class="small muted">${r.extra}</div>`:''}</td><td class="num">${r.sys}</td><td class="num small" style="white-space:normal;max-width:320px">${r.times.join('، ')||'—'}</td><td class="num">${r.spec??'—'}</td><td class="num">${pct(r.total)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <textarea id="br_text" class="out" hidden readonly></textarea>
+  </div>`;
+}
+async function copyText(t, el){
+  try{ await navigator.clipboard.writeText(t); toast('نُسخ التقرير. الصقيه في واتساب'); }
+  catch(e){ el.hidden=false; el.value=t; el.focus(); el.select(); toast('النسخ التلقائي غير متاح: النص محدّد، انسخيه يدويًا'); }
+}
+async function saveFile(name, data){
+  let dl=null; try{ dl = window.claude?.use ? await window.claude.use('downloads') : null; }catch(e){}
+  if(!dl){ const blob=new Blob([data],{type:/\.csv$/.test(name)?'text/csv;charset=utf-8':'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000); toast('حُفظ الملف '+name); return; }
+  try{ await dl.save({filename:name, data}); toast('جاهز للحفظ'); }catch(err){ if(err.code!=='declined') toast('تعذّر التنزيل: '+(err.message||err.code)); }
 }
 afterRender.ioa = ()=>{
   const sel=$('#i_s'); if(!sel) return;
+  $('#br_copy').addEventListener('click', ()=>{ const s=sessionById(S.ioaSession); copyText(behaviorReportText(s,sessionIOA(s)), $('#br_text')); });
+  $('#br_csv').addEventListener('click', ()=>{ const s=sessionById(S.ioaSession); const rows=behaviorRows(s,sessionIOA(s));
+    const out=[['experiment','session','date','duration_s','behavior','system_count','system_times','specialist_count','specialist_times','total_count_ioa','precision','recall','f1']];
+    rows.forEach(r=>out.push([EXP,s.label,s.date,s.duration,r.name,r.sys,r.times.join(' '),r.spec??'',r.specTimes.join(' '),r.total==null?'':r.total.toFixed(1),r.precision==null?'':r.precision.toFixed(1),r.recall==null?'':r.recall.toFixed(1),r.f1==null?'':r.f1.toFixed(1)]));
+    saveFile(`behavior-report-${s.date}.csv`, '\ufeff'+out.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n')); });
   sel.addEventListener('change',()=>{ S.ioaSession=sel.value; render(); });
   $('#ioaForm').addEventListener('submit', async e=>{ e.preventDefault(); const s=sessionById(S.ioaSession); const spec={};
     BKEYS.forEach(b=>{ spec[b]={count:$('#sc_'+b).value, times:$('#st_'+b).value.trim()}; });
@@ -879,6 +972,7 @@ function vReport(){
   </tbody></table></div></div>
   <div class="sheet stack">
     <div class="row" style="justify-content:space-between"><h2>نص التقرير</h2><div class="row"><button class="btn primary" id="r_gen">صياغة من المصادر</button><button class="btn" id="r_csv">تنزيل الأحداث CSV</button><button class="btn" id="r_json">تنزيل كل البيانات JSON</button></div></div>
+    <p class="small muted">لتقرير كل سلوك في جلسة واحدة ومقارنته بعدّ الأخصائية: <button class="btn sm ghost" data-go="ioa">الاتفاق والدقة</button></p>
     <p class="small muted">يستخدم ${S.sources.length} مصدرًا من مكتبة المصادر، وأهداف الأخصائي في ملف الطفل، وسياقات الأحداث المعتمدة. لا يبحث خارجها.</p>
     <textarea id="r_out" class="out" style="min-height:220px" placeholder="اضغطي «صياغة من المصادر» لإنشاء مسودة يراجعها الأخصائي."></textarea>
     <span class="small muted" id="r_msg"></span>
@@ -989,6 +1083,8 @@ function vMethod(){
   return `
   ${headBlock('المنهجية والمعايير','كيف يُقاس النظام علميًا','هذه الصفحة تصف المنهجية التي يطبّقها الموقع، ويمكن نقلها إلى قسم المنهجية في البحث.')}
   <div class="sheet method">
+    <h2>عنوان التجربة</h2>
+    <p><b>${EXP}</b></p>
     <h2>1. التصميم</h2>
     <p>دراسة تطوير وتقييم لنموذج أولي: يقارَن رصد النظام الآلي بملاحظة بشرية مستقلة من أخصائية BCBA على الفيديوهات نفسها. المتغير المقيس هو صدق القياس الآلي لثلاث سلوكيات معرّفة تشغيليًا.</p>
     <h2>2. التعريفات التشغيلية</h2>
