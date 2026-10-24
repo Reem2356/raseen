@@ -55,6 +55,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .nav button[aria-current="page"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
 .nav button .ix{font-family:var(--mono);font-size:.72rem;width:18px;color:var(--muted)}
 .nav .sep{height:1px;background:var(--line);margin:8px 4px}
+.nav button.off{opacity:.45}
+.cur-file{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;padding:4px 10px 8px;font-size:.78rem;color:var(--muted)}
+.cur-file b{font-size:1rem;color:var(--ink)}
+.cur-file span:first-child{flex-basis:100%}
+.cur-file.none{font-style:italic}
+.fileno{font-family:var(--mono);font-size:2.4rem;font-weight:500;letter-spacing:.06em;direction:ltr;unicode-bidi:isolate}
 .badge-count{margin-inline-start:auto;font-family:var(--mono);font-size:.72rem;background:var(--warn);color:var(--sheet);border-radius:10px;padding:0 7px}
 .store-chip{margin-top:auto;font-size:.76rem;color:var(--muted);display:flex;gap:6px;align-items:flex-start}
 .store-chip i{width:8px;height:8px;border-radius:50%;background:var(--muted);margin-top:7px;flex:none}
@@ -167,6 +173,8 @@ td .ctx{min-width:170px}
   .app{grid-template-columns:minmax(0,1fr)}
   .rail{position:sticky;top:env(safe-area-inset-top,0px);height:auto;z-index:5;flex-direction:row;align-items:center;gap:12px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-inline-start:0;border-bottom:1px solid var(--line);overflow-x:auto}
   .brand span,.store-chip,.nav .sep,.nav .ix{display:none}
+  .cur-file{flex-wrap:nowrap;padding:0 6px;white-space:nowrap;border-inline-start:1px solid var(--line);margin-inline-start:4px}
+  .cur-file span:first-child{display:none}
   .brand b{white-space:nowrap;font-size:.95rem}
   .nav{flex-direction:row;gap:2px}
   .nav button{white-space:nowrap;padding:6px 10px}
@@ -247,10 +255,14 @@ const CONSENT = `نموذج موافقة ولي الأمر على مشاركة �
 التوقيع: ......................
 التاريخ: ......................`;
 const VIEWS = [
-  ['home','اللوحة'],['child','ملف الطفل'],['behaviors','السلوكيات المستهدفة'],
-  ['session','جلسة رصد'],['review','مراجعة الأحداث'],['ioa','الاتفاق والدقة'],
-  ['report','التقرير الأسبوعي'],['sources','مكتبة المصادر'],['method','المنهجية والمعايير']
+  ['files','ملفات الأطفال'],
+  ['home','لوحة الطفل'],['child','ملف الطفل'],['session','جلسة رصد'],['review','مراجعة الأحداث'],['ioa','الاتفاق والدقة'],['report','التقرير الأسبوعي'],
+  ['behaviors','السلوكيات المستهدفة'],['sources','مكتبة المصادر'],['method','المنهجية والمعايير']
 ];
+const CHILD_VIEWS = ['home','child','session','review','ioa','report'];
+const fmtFile = n => String(n||0).padStart(4,'0');
+const nextFileNo = () => Math.max(0, ...S.children.map(c=>+c.fileNo||0)) + 1;
+const blankChild = () => ({code:'', kind:'child', age:'', setting:'', goals:'', report:'', consentGuardian:false, consentAssent:false, consentSpecialist:false});
 const IOA_OK = 80, IOA_GOOD = 90, TOL = 1.5, INTERVAL = 10;
 
 /* ---------- utils ---------- */
@@ -328,13 +340,35 @@ const Store = {
 };
 
 /* ---------- state ---------- */
-const S = { child:null, sessions:[], events:[], sources:[], view:'home', reviewFilter:{session:'all',beh:'all',status:'all'}, ioaSession:null, reportStart:null, includePending:false };
+const S = { child:null, childId:null, newChild:false, justCreated:false, children:[], allSessions:[], allEvents:[], sessions:[], events:[], sources:[], view:'files', reviewFilter:{session:'all',beh:'all',status:'all'}, ioaSession:null, reportStart:null, includePending:false };
 async function loadAll(){
-  const [m, se, ev, so] = await Promise.all([Store.list('meta'), Store.list('sessions'), Store.list('events'), Store.list('sources')]);
-  S.child = m.find(x=>x.id==='child') || {code:'', age:'', setting:'', goals:'', report:'', consentGuardian:false, consentAssent:false, consentSpecialist:false};
-  S.sessions = se.sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||0)-(a.createdAt||0));
-  S.events = ev.sort((a,b)=>a.start-b.start);
+  const [m, ch, se, ev, so] = await Promise.all([Store.list('meta'), Store.list('children'), Store.list('sessions'), Store.list('events'), Store.list('sources')]);
+  S.children = ch.sort((a,b)=>(+a.fileNo||0)-(+b.fileNo||0));
+  // earlier versions kept one child in meta/child and sessions without a file: move them into file 0001
+  const orphan = se.filter(x=>!x.childId), legacy = m.find(x=>x.id==='child');
+  if(orphan.length || (legacy && legacy.code && !S.children.some(c=>c.legacy))){
+    let target = S.children.find(c=>c.legacy);
+    if(!target){ const id='c-'+uid(); const d={...blankChild(), ...(legacy||{}), fileNo:nextFileNo(), legacy:true, createdAt:Date.now()}; delete d.id;
+      if(!d.code && orphan.some(x=>x.example)) d.code='مثال تجريبي';
+      await Store.set('children', id, d); target={id,...d}; S.children.push(target); }
+    for(const x of orphan){ await Store.update('sessions', x.id, {childId:target.id}); x.childId=target.id; }
+  }
+  S.allSessions = se.sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||0)-(a.createdAt||0));
+  S.allEvents = ev.sort((a,b)=>a.start-b.start);
   S.sources = so.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  applyChild();
+}
+function applyChild(){
+  S.child = S.children.find(c=>c.id===S.childId) || null;
+  if(!S.child) S.childId=null;
+  S.sessions = S.allSessions.filter(x=>x.childId && x.childId===S.childId);
+  const ids = new Set(S.sessions.map(x=>x.id));
+  S.events = S.allEvents.filter(e=>ids.has(e.sessionId));
+}
+function openChild(id){
+  S.childId=id; S.newChild=false; S.justCreated=false; S.ioaSession=null; S.reviewFilter={session:'all',beh:'all',status:'all'};
+  try{ localStorage.setItem('bcba:lastChild', id); }catch(e){}
+  applyChild(); go('home');
 }
 const sessionById = id => S.sessions.find(s=>s.id===id);
 const evOf = (sid, b) => S.events.filter(e=>e.sessionId===sid && (!b || e.behavior===b));
@@ -343,9 +377,10 @@ const evCount = e => e.kind==='event' ? (e.count||1) : 0;
 /* ---------- nav ---------- */
 function renderNav(){
   const pending = S.events.filter(e=>e.kind==='event' && e.status==='pending').length;
+  const cur = S.child? `<div class="cur-file"><span>الملف المفتوح</span><b class="num">${fmtFile(S.child.fileNo)}</b><span>${esc(S.child.code)||'بدون رمز'}</span></div>` : `<div class="cur-file none"><span>لم يُفتح ملف</span></div>`;
   $('#nav').innerHTML = VIEWS.map(([k,l],i)=>
-    (k==='session'||k==='sources' ? '<div class="sep"></div>' : '') +
-    `<button data-go="${k}" ${S.view===k?'aria-current="page"':''}><span class="ix">${String(i+1).padStart(2,'0')}</span>${l}${k==='review'&&pending?`<span class="badge-count">${pending}</span>`:''}</button>`).join('');
+    (k==='home' ? '<div class="sep"></div>'+cur : k==='behaviors' ? '<div class="sep"></div>' : '') +
+    `<button data-go="${k}" ${S.view===k?'aria-current="page"':''} ${CHILD_VIEWS.includes(k)&&!S.child?'class="off"':''}><span class="ix">${String(i+1).padStart(2,'0')}</span>${l}${k==='review'&&pending?`<span class="badge-count">${pending}</span>`:''}</button>`).join('');
   const chip=$('#storeChip');
   if(Store.mode==='cloud' && Store.user) $('#nav').insertAdjacentHTML('beforeend','<div class="sep"></div><button id="logoutBtn"><span class="ix"></span>تسجيل الخروج</button>');
   chip.className='store-chip'+(Store.mode==='db'||Store.mode==='cloud'?' shared':'');
@@ -375,7 +410,8 @@ function render(){
   if(Store.mode==='cloud' && !Store.user){ renderNav(); $('#views').innerHTML=loginHTML(); lastView='login'; bindLogin(); return; }
   renderNav();
   const box=$('#views');
-  const fn = {home:vHome, child:vChild, behaviors:vBehaviors, session:vSession, review:vReview, ioa:vIoa, report:vReport, sources:vSources, method:vMethod}[S.view] || vHome;
+  if(CHILD_VIEWS.includes(S.view) && !S.child && !(S.view==='child' && S.newChild)){ if(S.view!=='files') toast('افتحي ملف طفل أولًا'); S.view='files'; renderNav(); }
+  const fn = {files:vFiles, home:vHome, child:vChild, behaviors:vBehaviors, session:vSession, review:vReview, ioa:vIoa, report:vReport, sources:vSources, method:vMethod}[S.view] || vHome;
   if(S.view==='session' && lastView==='session' && $('#sessionRoot')) return; // keep live session DOM intact
   lastView=S.view;
   box.innerHTML = `<div id="vroot" class="stack" style="gap:22px">${fn()}</div>`;
@@ -387,6 +423,41 @@ function headBlock(eyebrow, title, lead, actions=''){
   return `<div class="head"><div class="t"><span class="eyebrow">${eyebrow}</span><h1>${title}</h1>${lead?`<p class="lead">${lead}</p>`:''}</div>${actions?`<div class="row">${actions}</div>`:''}</div>`;
 }
 
+/* FILES */
+function vFiles(){
+  let last=null; try{ last=localStorage.getItem('bcba:lastChild'); }catch(e){}
+  const lastC = S.children.find(c=>c.id===last);
+  return `
+  ${headBlock('ملفات الأطفال','ادخلي برقم ملف الطفل','لكل طفل ملف برقم ثابت. أنشئي ملف الطفل أولًا وسجّلي معلوماته، ثم افتحيه وابدئي الرصد. كل الجلسات والتقارير تُحفظ داخل ملفه.', `<button class="btn primary" id="newFile">ملف جديد</button>`)}
+  <form class="sheet row" id="openForm" style="align-items:flex-end">
+    <label class="f" style="flex:1 1 180px">رقم الملف<input type="text" id="openNo" inputmode="numeric" autocomplete="off" dir="ltr" placeholder="0001" class="num" style="text-align:left;font-size:1.1rem"></label>
+    <button class="btn primary" type="submit">فتح الملف</button>
+    ${lastC? `<button class="btn" type="button" data-open="${lastC.id}">آخر ملف فتحتيه: <span class="num">${fmtFile(lastC.fileNo)}</span></button>`:''}
+    <span class="small" id="openMsg" style="color:var(--bad);flex-basis:100%" role="alert"></span>
+  </form>
+  <div class="sheet flush"><div class="tbl-wrap">
+  ${S.children.length? `<table class="cards"><thead><tr><th>رقم الملف</th><th>رمز الطفل</th><th>العمر</th><th>الجلسات</th><th>آخر جلسة</th><th>الموافقات</th><th></th></tr></thead><tbody>
+  ${S.children.map(c=>{ const ss=S.allSessions.filter(x=>x.childId===c.id); const lastD=ss.map(x=>x.date).sort().pop(); const ok=c.kind==='volunteer'|| (c.consentGuardian&&c.consentAssent&&c.consentSpecialist); return `<tr>
+    <td data-l="رقم الملف"><span class="num" style="font-weight:600;font-size:1.05rem">${fmtFile(c.fileNo)}</span></td>
+    <td data-l="رمز الطفل">${esc(c.code)||'—'}${c.kind==='volunteer'?' <span class="pill p-undet">متطوع للتجربة</span>':''}</td>
+    <td data-l="العمر"><span class="num">${esc(c.age)||'—'}</span></td>
+    <td data-l="الجلسات"><span class="num">${ss.length}</span></td>
+    <td data-l="آخر جلسة"><span class="num">${lastD||'—'}</span></td>
+    <td data-l="الموافقات">${ok?'<span class="pill p-approved">مكتملة</span>':'<span class="pill p-pending">ناقصة</span>'}</td>
+    <td><button class="btn sm primary" type="button" data-open="${c.id}">فتح الملف</button></td></tr>`; }).join('')}
+  </tbody></table>` : `<div class="stack" style="padding:24px"><p>لا توجد ملفات بعد.</p><p class="muted small">اضغطي «ملف جديد»، سجّلي معلومات الطفل، ويعطيه النظام رقم ملف تلقائيًا.</p></div>`}
+  </div></div>`;
+}
+afterRender.files = ()=>{
+  $('#newFile').addEventListener('click', ()=>{ S.childId=null; S.newChild=true; S.justCreated=false; applyChild(); go('child'); });
+  $('#openForm').addEventListener('submit', e=>{ e.preventDefault();
+    const raw=$('#openNo').value.trim().replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\D/g,'');
+    const c = raw && S.children.find(x=>+x.fileNo===+raw);
+    if(!c){ $('#openMsg').textContent = raw? `لا يوجد ملف برقم ${fmtFile(raw)}. تأكدي من الرقم أو أنشئي ملفًا جديدًا.` : 'اكتبي رقم الملف.'; return; }
+    openChild(c.id); });
+  $('#vroot').addEventListener('click', e=>{ const b=e.target.closest('[data-open]'); if(b) openChild(b.dataset.open); });
+};
+
 /* HOME */
 function vHome(){
   const c=S.child, ev=S.events.filter(e=>e.kind==='event');
@@ -394,10 +465,10 @@ function vHome(){
   const obs=sum(S.sessions.map(s=>s.duration||0));
   const ioaVals=S.sessions.map(s=>sessionIOA(s)).filter(x=>x.overall!=null);
   const lastIoa=ioaVals.length? ioaVals[0].overall : null;
-  const consentOk = c.consentGuardian && c.consentAssent && c.consentSpecialist;
+  const consentOk = c.kind==='volunteer' || (c.consentGuardian && c.consentAssent && c.consentSpecialist);
   const counts = Object.fromEntries(BKEYS.map(b=>[b, sum(ev.filter(e=>e.behavior===b && e.status==='approved').map(evCount))]));
   return `
-  ${headBlock('لوحة الأخصائي', c.code? `المشارك ${esc(c.code)}` : 'مرحبًا بك', 'نظام يرصد ثلاث سلوكيات معرّفة تشغيليًا من فيديو أو كاميرا داخل جهازك، ويقترح أحداثًا يعتمدها الأخصائي قبل دخولها التقرير.',
+  ${headBlock(`لوحة الطفل · ملف رقم ${fmtFile(c.fileNo)}`, c.code? `المشارك ${esc(c.code)}` : `ملف ${fmtFile(c.fileNo)}`, 'نظام يرصد ثلاث سلوكيات معرّفة تشغيليًا من فيديو أو كاميرا داخل جهازك، ويقترح أحداثًا يعتمدها الأخصائي قبل دخولها التقرير.',
     `<label class="btn" for="imp_file" style="cursor:pointer">استيراد بيانات</label><input type="file" id="imp_file" accept="application/json,.json" hidden><button class="btn primary" data-go="session">ابدأ جلسة رصد</button>`)}
   ${consentOk? '' : `<div class="notice warn">لم تُسجَّل كل الموافقات بعد (ولي الأمر، قبول الطفل، الأخصائية). سجّليها في <button class="btn sm ghost" data-go="child">ملف الطفل</button> قبل أي رصد لطفل حقيقي.</div>`}
   <div class="sheet flush"><div class="grid g4">
@@ -430,12 +501,15 @@ async function importData(e){
   if(!d || !Array.isArray(d.sessions) || !Array.isArray(d.events)){ toast('هذا ليس ملف بيانات من مساعد BCBA'); return; }
   let ns=0, ne=0, nr=0;
   try{
-    if(d.child && !S.child.code) await Store.set('meta','child',d.child);
+    let cid=S.childId;
+    if(d.child && d.child.id){ if(!S.children.some(x=>x.id===d.child.id)){ const c={...d.child}; if(S.children.some(x=>+x.fileNo===+c.fileNo)) c.fileNo=nextFileNo(); await Store.set('children',c.id,c); S.children.push(c); } cid=d.child.id; }
+    if(!cid){ toast('افتحي ملف الطفل أولًا ثم استوردي'); return; }
+    d.sessions.forEach(x=>{ if(!x.childId) x.childId=cid; });
     for(const s of d.sessions){ if(!s.id) continue; if(!sessionById(s.id)) ns++; await Store.set('sessions',s.id,s); }
     for(const ev of d.events){ if(!ev.id||!ev.sessionId) continue; if(!S.events.some(x=>x.id===ev.id)) ne++; await Store.set('events',ev.id,ev); }
     for(const r of (d.sources||[])){ if(!r.id) continue; if(!S.sources.some(x=>x.id===r.id)) nr++; await Store.set('sources',r.id,r); }
   }catch(err){ toast('تعذّر الاستيراد: '+(err.message||err)); return; }
-  await loadAll(); render(); toast(`استُورد: جلسات جديدة ${ns}، أحداث ${ne}، مصادر ${nr}`);
+  await loadAll(); render(); lastView=null; S.childId=cid; applyChild(); render(); toast(`استُورد إلى ملف ${fmtFile(S.child?.fileNo)}: جلسات جديدة ${ns}، أحداث ${ne}، مصادر ${nr}`);
 }
 async function delSessionHandler(e){
   const b=e.target.closest('[data-del-session]'); if(!b) return;
@@ -447,10 +521,16 @@ async function delSessionHandler(e){
 
 /* CHILD */
 function vChild(){
-  const c=S.child;
+  const isNew = S.newChild || !S.child; const c = isNew? blankChild() : S.child;
+  const no = isNew? nextFileNo() : c.fileNo;
   return `
-  ${headBlock('ملف الطفل','بيانات المشارك','استخدمي رمزًا بدل الاسم الحقيقي. لا يُحفظ اسم الطفل ولا صورته في النظام.')}
+  ${headBlock(isNew? 'ملف جديد' : 'ملف الطفل', isNew? 'تسجيل معلومات الطفل' : `ملف رقم <span class="num">${fmtFile(no)}</span>`, isNew? `عند الحفظ يأخذ الطفل رقم الملف <b class="num">${fmtFile(no)}</b>، وتدخلين به كل مرة. استخدمي رمزًا بدل الاسم الحقيقي؛ لا يُحفظ اسم الطفل ولا صورته.` : 'استخدمي رمزًا بدل الاسم الحقيقي. لا يُحفظ اسم الطفل ولا صورته في النظام.', isNew? '' : `<button class="btn primary" data-go="session">ابدأ الرصد</button>`)}
+  ${S.justCreated? `<div class="sheet stack" style="border-color:var(--good)"><span class="small muted">أُنشئ الملف. احفظي رقمه:</span><span class="fileno">${fmtFile(no)}</span><div class="row"><button class="btn primary" data-go="session">ابدأ الرصد الآن</button><button class="btn" data-go="files">رجوع للملفات</button></div></div>` : ''}
   <form class="sheet stack" id="childForm">
+    <div class="row" role="radiogroup" aria-label="نوع الملف" style="gap:18px">
+      <label class="check"><input type="radio" name="c_kind" value="child" ${c.kind!=='volunteer'?'checked':''}> طفل</label>
+      <label class="check"><input type="radio" name="c_kind" value="volunteer" ${c.kind==='volunteer'?'checked':''}> متطوع بالغ لاختبار النظام</label>
+    </div>
     <div class="grid g3">
       <label class="f">رمز المشارك<input type="text" id="c_code" value="${esc(c.code)}" placeholder="مثل: ط-01"></label>
       <label class="f">العمر (سنوات)<input type="number" id="c_age" min="1" max="18" value="${esc(c.age)}"></label>
@@ -467,15 +547,25 @@ function vChild(){
       <textarea id="consentText" class="out" readonly style="min-height:300px">${esc(CONSENT)}</textarea>
       <div class="row"><button class="btn sm" type="button" id="copyConsent">نسخ النموذج</button></div>
     </details>
-    <div class="row"><button class="btn primary" type="submit">حفظ الملف</button><span class="small muted" id="childMsg"></span></div>
+    <div class="row"><button class="btn primary" type="submit">${isNew? 'حفظ وإنشاء رقم الملف' : 'حفظ التعديلات'}</button>${isNew? '<button class="btn ghost" type="button" data-go="files">إلغاء</button>':''}<span class="small muted" id="childMsg"></span></div>
   </form>`;
 }
 afterRender.child = ()=>{
   $('#copyConsent').addEventListener('click', ()=>copyText(CONSENT, $('#consentText')));
   $('#childForm').addEventListener('submit', async e=>{
     e.preventDefault();
-    const d={ code:$('#c_code').value.trim(), age:$('#c_age').value, setting:$('#c_setting').value.trim(), goals:$('#c_goals').value.trim(), report:$('#c_report').value.trim(), consentGuardian:$('#c_g').checked, consentAssent:$('#c_a').checked, consentSpecialist:$('#c_s').checked };
-    try{ await Store.set('meta','child',d); S.child=d; toast('حُفظ ملف الطفل'); renderNav(); }catch(err){ toast('تعذّر الحفظ: '+(err.message||err.code)); }
+    const d={ kind:(document.querySelector('input[name=c_kind]:checked')||{}).value||'child', code:$('#c_code').value.trim(), age:$('#c_age').value, setting:$('#c_setting').value.trim(), goals:$('#c_goals').value.trim(), report:$('#c_report').value.trim(), consentGuardian:$('#c_g').checked, consentAssent:$('#c_a').checked, consentSpecialist:$('#c_s').checked };
+    try{
+      if(S.newChild || !S.child){
+        const id='c-'+uid(); const rec={...d, fileNo:nextFileNo(), createdAt:Date.now()};
+        await Store.set('children', id, rec); S.children.push({id,...rec});
+        S.childId=id; S.newChild=false; S.justCreated=true; try{ localStorage.setItem('bcba:lastChild', id); }catch(e){}
+        applyChild(); lastView=null; render(); window.scrollTo({top:0}); toast('أُنشئ الملف رقم '+fmtFile(rec.fileNo));
+      } else {
+        const rec={...S.child, ...d}; delete rec.id; await Store.set('children', S.childId, rec);
+        Object.assign(S.child, d); S.justCreated=false; toast('حُفظ ملف الطفل'); renderNav();
+      }
+    }catch(err){ toast('تعذّر الحفظ: '+(err.message||err.code)); }
   });
 };
 
@@ -501,6 +591,7 @@ function vBehaviors(){
 }
 
 /* SESSION */
+function consentBlock(){ const c=S.child; if(!c) return 'افتحي ملف طفل أولًا.'; if(c.kind==='volunteer') return ''; return c.consentGuardian? '' : 'لا يبدأ الرصد قبل تسجيل موافقة ولي الأمر في ملف الطفل.'; }
 let pose=null, poseLoading=null, lastResults=null, run=null, camStream=null, wakeLock=null;
 window.addEventListener('beforeunload', e=>{ if(run && (run.active || !$('#saveBox')?.hidden)){ e.preventDefault(); e.returnValue=''; } });
 function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('تعذّر تحميل '+src)); document.head.appendChild(s); }); }
@@ -603,7 +694,7 @@ class Detector{
 
 function vSession(){
   return `<div id="sessionRoot" class="stack" style="gap:22px">
-  ${headBlock('جلسة رصد','رصد من فيديو أو كاميرا','ارفعي فيديو مسجّلًا لجلسة الطفل أو لمتطوع يؤدي الحركات الثلاث. التحليل يجري داخل جهازك إطارًا بإطار، ثم تُحفظ الأحداث كنص فقط.')}
+  ${headBlock(`جلسة رصد · ملف رقم ${fmtFile(S.child.fileNo)}${S.child.code? ' · '+esc(S.child.code):''}`,'رصد من فيديو أو كاميرا','ارفعي فيديو مسجّلًا لجلسة الطفل أو لمتطوع يؤدي الحركات الثلاث. التحليل يجري داخل جهازك إطارًا بإطار، ثم تُحفظ الأحداث كنص فقط.')}
   <div class="privacy"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>الفيديو لا يُرفع ولا يُحفظ. يُحلَّل في هذا المتصفح، ويبقى من الجلسة: وقت كل حدث، ونوعه، والهيكل العظمي لحظة الحدث (نقاط بلا صورة) ليتحقق منه الأخصائي.</span></div>
   <div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);align-items:start" id="sessGrid">
     <div class="stack">
@@ -675,7 +766,7 @@ afterRender.session = ()=>{
   $('#s_stop').addEventListener('click', ()=>{ if(run) run.stop=true; });
   $('#s_save').addEventListener('click', saveRun);
   $('#s_discard').addEventListener('click', ()=>{ run=null; $('#saveBox').hidden=true; renderCounters({raise:0,clap:0,stand:0}); drawTimeline([],60); setStatus('أُلغيت النتائج.'); });
-  ensurePose().then(()=>{ if(!run) setStatus((!S.child.consentGuardian || !S.child.consentAssent)? 'النموذج جاهز. تنبيه: لم تُسجَّل موافقة ولي الأمر وقبول الطفل في ملف الطفل؛ للتجربة على متطوع بالغ لا بأس.' : 'النموذج جاهز. اختاري فيديو للتحليل.'); }).catch(()=>{});
+  ensurePose().then(()=>{ if(!run) setStatus(consentBlock()? 'النموذج جاهز. '+consentBlock() : 'النموذج جاهز. اختاري فيديو أو شغّلي الكاميرا.'); }).catch(()=>{});
 };
 function seek(v,t){ return new Promise(res=>{ const h=()=>{ v.removeEventListener('seeked',h); res(); }; v.addEventListener('seeked',h); v.currentTime=t; }); }
 async function ensurePose(){
@@ -686,6 +777,7 @@ async function ensurePose(){
 }
 async function analyzeFile(file){
   if(run && run.active) return;
+  { const cb=consentBlock(); if(cb){ setStatus(cb); toast(cb); return; } }
   const v=$('#vid'); $('#stageEmpty').hidden=true; $('#saveBox').hidden=true;
   const url=URL.createObjectURL(file); v.srcObject=null; v.src=url;
   await new Promise((res,rej)=>{ v.onloadedmetadata=res; v.onerror=()=>rej(new Error('المتصفح لا يقرأ صيغة هذا الفيديو. جرّبي ملف MP4 أو WebM، أو صوّري بكاميرا الجوال بإعداد «الأكثر توافقًا».')); }).catch(err=>{ setStatus(err.message); $('#stageEmpty').hidden=false; });
@@ -713,6 +805,7 @@ async function analyzeFile(file){
 }
 async function startCamera(){
   if(run && run.active) return;
+  { const cb=consentBlock(); if(cb){ setStatus(cb); toast(cb); return; } }
   if(!navigator.mediaDevices?.getUserMedia){ setStatus('هذا المتصفح لا يدعم الكاميرا. استخدمي Chrome أو Safari بإصدار حديث.'); return; }
   try{ camStream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},facingMode:{ideal:$('#s_face').value}}, audio:false}); }
   catch(err){ setStatus(err.name==='NotAllowedError'? 'رُفض إذن الكاميرا. اسمحي للموقع باستخدام الكاميرا من إعدادات المتصفح (رمز القفل بجانب العنوان) ثم أعيدي المحاولة.' : err.name==='NotFoundError'? 'لا توجد كاميرا متصلة بهذا الجهاز.' : err.name==='NotReadableError'? 'الكاميرا مستخدمة في تطبيق آخر. أغلقيه ثم أعيدي المحاولة.' : 'تعذّر تشغيل الكاميرا: '+err.message); return; }
@@ -748,7 +841,7 @@ function finishRun(){
 async function saveRun(){
   if(!run) return; const btn=$('#s_save'); btn.disabled=true;
   const id=uid();
-  const ses={ id, label:$('#s_label').value.trim()||'جلسة رصد', date:$('#s_date').value||today(), duration:+run.duration.toFixed(2), source:run.source, fps:run.fps, createdAt:Date.now(), clapTimes:run.det.clapTimes.map(x=>+x.toFixed(2)), spec:{} };
+  const ses={ id, childId:S.childId, label:$('#s_label').value.trim()||'جلسة رصد', date:$('#s_date').value||today(), duration:+run.duration.toFixed(2), source:run.source, fps:run.fps, createdAt:Date.now(), clapTimes:run.det.clapTimes.map(x=>+x.toFixed(2)), spec:{} };
   try{
     await Store.set('sessions', id, ses);
     for(const e of run.det.events){
@@ -756,7 +849,7 @@ async function saveRun(){
       await Store.set('events', eid, { sessionId:id, behavior:e.behavior, kind:e.kind, start:+e.start.toFixed(2), end:+e.end.toFixed(2), count:e.count||0, times:e.times||[], detail:e.detail||'', key:e.key||[], status: e.kind==='event'?'pending':'undet', context:'', note:'' });
     }
   }catch(err){ toast('تعذّر الحفظ: '+(err.message||err.code)); btn.disabled=false; return; }
-  run=null; await loadAll(); toast('حُفظت الجلسة. الأحداث بانتظار المراجعة');
+  run=null; await loadAll(); toast('حُفظت الجلسة في ملف '+fmtFile(S.child.fileNo)+'. الأحداث بانتظار المراجعة');
   S.reviewFilter.session=id; go('review');
 }
 
@@ -886,6 +979,7 @@ function behaviorRows(s,R){
 function behaviorReportText(s,R){
   const rows=behaviorRows(s,R), L=[];
   L.push('تقرير السلوكيات — '+EXP);
+  L.push(`ملف رقم ${fmtFile(S.child.fileNo)}${S.child.code? ' · '+S.child.code:''}`);
   L.push(`الجلسة: ${s.label} · ${s.date} · المدة ${fmtDur(s.duration)} · ${s.source==='camera'?'كاميرا مباشرة':'فيديو مسجّل'}`);
   L.push('(مخرجات النظام قبل مراجعة الأخصائي)');
   L.push('');
@@ -923,9 +1017,9 @@ afterRender.ioa = ()=>{
   const sel=$('#i_s'); if(!sel) return;
   $('#br_copy').addEventListener('click', ()=>{ const s=sessionById(S.ioaSession); copyText(behaviorReportText(s,sessionIOA(s)), $('#br_text')); });
   $('#br_csv').addEventListener('click', ()=>{ const s=sessionById(S.ioaSession); const rows=behaviorRows(s,sessionIOA(s));
-    const out=[['experiment','session','date','duration_s','behavior','system_count','system_times','specialist_count','specialist_times','total_count_ioa','precision','recall','f1']];
-    rows.forEach(r=>out.push([EXP,s.label,s.date,s.duration,r.name,r.sys,r.times.join(' '),r.spec??'',r.specTimes.join(' '),r.total==null?'':r.total.toFixed(1),r.precision==null?'':r.precision.toFixed(1),r.recall==null?'':r.recall.toFixed(1),r.f1==null?'':r.f1.toFixed(1)]));
-    saveFile(`behavior-report-${s.date}.csv`, '\ufeff'+out.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n')); });
+    const out=[['experiment','file_number','session','date','duration_s','behavior','system_count','system_times','specialist_count','specialist_times','total_count_ioa','precision','recall','f1']];
+    rows.forEach(r=>out.push([EXP,fmtFile(S.child.fileNo),s.label,s.date,s.duration,r.name,r.sys,r.times.join(' '),r.spec??'',r.specTimes.join(' '),r.total==null?'':r.total.toFixed(1),r.precision==null?'':r.precision.toFixed(1),r.recall==null?'':r.recall.toFixed(1),r.f1==null?'':r.f1.toFixed(1)]));
+    saveFile(`behavior-report-${fmtFile(S.child.fileNo)}-${s.date}.csv`, '\ufeff'+out.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n')); });
   sel.addEventListener('change',()=>{ S.ioaSession=sel.value; render(); });
   $('#ioaForm').addEventListener('submit', async e=>{ e.preventDefault(); const s=sessionById(S.ioaSession); const spec={};
     BKEYS.forEach(b=>{ spec[b]={count:$('#sc_'+b).value, times:$('#st_'+b).value.trim()}; });
@@ -990,7 +1084,7 @@ async function genReport(){
   let sample=null; try{ sample = window.claude?.use ? await window.claude.use('sample') : null; }catch(e){}
   if(!sample){ out.value=localDraft(); msg.textContent='مسودة مبنية من الأرقام والسياقات المعتمدة فقط. راجعيها وأكمليها بتفسير الأخصائية.'; return; }
   const D=weekData();
-  const data={ participant:S.child.code||'—', week_start:D.start, sessions:D.ses.length, observed_hours:+D.hours.toFixed(2), unclear_minutes:+(D.undet/60).toFixed(1),
+  const data={ file_number:fmtFile(S.child.fileNo), participant:S.child.code||'—', week_start:D.start, sessions:D.ses.length, observed_hours:+D.hours.toFixed(2), unclear_minutes:+(D.undet/60).toFixed(1),
     totals:Object.fromEntries(BKEYS.map(b=>[BEH[b].name, sum(D.per[b])])), daily:Object.fromEntries(BKEYS.map(b=>[BEH[b].name, Object.fromEntries(D.days.map((d,i)=>[d,D.per[b][i]]))])),
     rate_per_hour:Object.fromEntries(BKEYS.map(b=>[BEH[b].name, D.hours? +(sum(D.per[b])/D.hours).toFixed(2) : null])), contexts:D.ctx };
   const sources=S.sources.map((s,i)=>`[م${i+1}] ${s.title}\n${s.text}`).join('\n\n');
@@ -1021,7 +1115,7 @@ ${sources||'لا توجد مصادر.'}`;
 function localDraft(){
   const D=weekData(), L=[];
   const end=D.days[6];
-  L.push(`تقرير أسبوعي — المشارك: ${S.child.code||'—'}`);
+  L.push(`تقرير أسبوعي — ملف رقم ${fmtFile(S.child.fileNo)}${S.child.code? ' · '+S.child.code:''}`);
   L.push(`الفترة: ${D.start} إلى ${end}`);
   L.push('');
   L.push('ملخص');
@@ -1126,14 +1220,14 @@ function vMethod(){
 (async function boot(){
   $('#views').innerHTML='<p class="muted">جارٍ التحميل…</p>';
   await Store.init();
-  { const h0=(location.hash||'').slice(1); if(VIEWS.some(v=>v[0]===h0)) S.view=h0; }
+  { const h0=(location.hash||'').slice(1); S.view=['behaviors','sources','method'].includes(h0)? h0 : 'files'; }
   if(Store.mode==='cloud' && !Store.user){ render(); return; }
   try{ await loadAll(); }catch(err){ $('#views').innerHTML=`<div class="notice bad">تعذّر قراءة البيانات: ${esc(err.message||err.code)}</div>`; renderNav(); return; }
-  const h=(location.hash||'').slice(1); if(VIEWS.some(v=>v[0]===h)) S.view=h;
+  const h=(location.hash||'').slice(1); S.view = ['behaviors','sources','method'].includes(h)? h : 'files';
   render();
   if(Store.db){
     let tmr=null; const refresh=()=>{ clearTimeout(tmr); tmr=setTimeout(async()=>{ if(S.view==='session' || document.activeElement?.matches('input,textarea,select')) return; await loadAll(); render(); },600); };
-    ['sessions','sources'].forEach(c=>{ let first=true; Store.db.collection(c).onSnapshot(()=>{ if(first){ first=false; return; } refresh(); }, ()=>{}); });
+    ['children','sessions','sources'].forEach(c=>{ let first=true; Store.db.collection(c).onSnapshot(()=>{ if(first){ first=false; return; } refresh(); }, ()=>{}); });
   }
 })();
 </script>
